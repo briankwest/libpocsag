@@ -31,6 +31,10 @@ extern "C" {
 #define POCSAG_BAUD_1200  1200
 #define POCSAG_BAUD_2400  2400
 
+/* Validation helpers */
+int pocsag_srate_valid(uint32_t sr);
+int pocsag_baud_valid(uint32_t br);
+
 typedef struct {
 	uint32_t sample_rate;   /* audio sample rate in Hz (e.g. 48000) */
 	uint32_t baud_rate;     /* bit rate: 512, 1200, or 2400 */
