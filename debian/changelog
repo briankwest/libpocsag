@@ -1,3 +1,15 @@
+libpocsag (1.1.0-1) stable; urgency=low
+
+  * Add FSK modulator and demodulator for full audio pipeline
+  * Add baseband NRZ output for FM transmitter / multimon-ng use
+  * Fix POCSAG numeric BCD encoding
+  * Support sample rates: 8000, 16000, 32000, 48000 Hz
+  * Support baud rates: 512, 1200, 2400
+  * Frequency validation and per-instance thread safety documented
+  * 63 tests, valgrind clean, zero allocation
+
+ -- Brian <brian@example.com>  Mon, 30 Mar 2026 00:00:00 +0000
+
 libpocsag (1.0.0-1) stable; urgency=low
 
   * Initial release.

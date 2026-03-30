@@ -17,8 +17,9 @@ Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: POCSAG paging protocol encoder/decoder library
  libpocsag is a C library for encoding and decoding POCSAG (Post Office
  Code Standardisation Advisory Group) paging protocol messages. It provides
- a batch encoder, streaming decoder, BCH(31,21) error correction, and
- support for numeric, alphanumeric, and tone-only message types.
+ a batch encoder, streaming decoder, BCH(31,21) error correction, FSK
+ modulator/demodulator, baseband NRZ output, and support for numeric,
+ alphanumeric, and tone-only message types.
 
 Package: libpocsag-dev
 Architecture: any
