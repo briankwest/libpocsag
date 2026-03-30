@@ -35,3 +35,13 @@ decode_stream
 
 *.tar.gz
 *.tar.xz
+
+debian/.debhelper/
+debian/tmp/
+debian/files
+debian/debhelper-build-stamp
+debian/*.substvars
+debian/autoreconf.before
+debian/autoreconf.after
+debian/libpocsag0/
+debian/libpocsag-dev/
