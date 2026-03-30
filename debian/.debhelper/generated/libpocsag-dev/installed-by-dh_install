@@ -1,0 +1,11 @@
+debian/tmp/usr/include/libpocsag/bch.h
+debian/tmp/usr/include/libpocsag/decoder.h
+debian/tmp/usr/include/libpocsag/encoder.h
+debian/tmp/usr/include/libpocsag/error.h
+debian/tmp/usr/include/libpocsag/pocsag.h
+debian/tmp/usr/include/libpocsag/types.h
+debian/tmp/usr/include/libpocsag/version.h
+debian/tmp/usr/lib/aarch64-linux-gnu/libpocsag.so
+debian/tmp/usr/lib/aarch64-linux-gnu/libpocsag.a
+debian/tmp/usr/lib/aarch64-linux-gnu/libpocsag.la
+debian/tmp/usr/lib/aarch64-linux-gnu/pkgconfig/libpocsag.pc

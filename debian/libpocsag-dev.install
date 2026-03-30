@@ -1,0 +1,5 @@
+usr/include/libpocsag/*
+usr/lib/*/libpocsag.so
+usr/lib/*/libpocsag.a
+usr/lib/*/libpocsag.la
+usr/lib/*/pkgconfig/libpocsag.pc

@@ -1,0 +1,4 @@
+libpocsag-dev_1.0.0-1_arm64.deb libdevel optional architecture=arm64
+libpocsag0-dbgsym_1.0.0-1_arm64.ddeb debug optional architecture=arm64 automatic=yes
+libpocsag0_1.0.0-1_arm64.deb libs optional architecture=arm64
+libpocsag_1.0.0-1_arm64.buildinfo hamradio optional
