@@ -7,7 +7,9 @@ libpocsag_la_SOURCES = \
 	numeric.c \
 	alpha.c \
 	encoder.c \
-	decoder.c
+	decoder.c \
+	modulator.c \
+	demodulator.c
 
 noinst_HEADERS = pocsag_internal.h
 
@@ -17,3 +19,4 @@ libpocsag_la_CFLAGS = \
 	-I$(top_srcdir)/include
 
 libpocsag_la_LDFLAGS = -version-info 0:0:0
+libpocsag_la_LIBADD = -lm

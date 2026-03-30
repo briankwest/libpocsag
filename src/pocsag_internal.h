@@ -8,6 +8,10 @@
 #include <stddef.h>
 #include <string.h>
 
+/* Sample-rate / baud-rate validation (modulator.c) */
+int pocsag_srate_valid(uint32_t sr);
+int pocsag_baud_valid(uint32_t br);
+
 /* Codeword construction */
 uint32_t pocsag_cw_address(uint32_t address, pocsag_func_t func);
 uint32_t pocsag_cw_message(uint32_t data20);

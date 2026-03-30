@@ -7,4 +7,6 @@ libpocsag_HEADERS = \
 	libpocsag/types.h \
 	libpocsag/bch.h \
 	libpocsag/encoder.h \
-	libpocsag/decoder.h
+	libpocsag/decoder.h \
+	libpocsag/modulator.h \
+	libpocsag/demodulator.h

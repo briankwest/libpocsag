@@ -7,5 +7,7 @@
 #include "bch.h"
 #include "encoder.h"
 #include "decoder.h"
+#include "modulator.h"
+#include "demodulator.h"
 
 #endif

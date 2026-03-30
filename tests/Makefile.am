@@ -8,7 +8,9 @@ test_libpocsag_SOURCES = \
 	test_alpha.c \
 	test_encoder.c \
 	test_decoder.c \
-	test_roundtrip.c
+	test_roundtrip.c \
+	test_modulator.c \
+	test_demodulator.c
 
 noinst_HEADERS = test.h
 
@@ -17,6 +19,6 @@ test_libpocsag_CFLAGS = \
 	-Wall -Wextra -pedantic \
 	-I$(top_srcdir)/include
 
-test_libpocsag_LDADD = $(top_builddir)/src/libpocsag.la
+test_libpocsag_LDADD = $(top_builddir)/src/libpocsag.la -lm
 
 TESTS = test_libpocsag

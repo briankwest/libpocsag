@@ -10,6 +10,8 @@ extern void test_alpha(void);
 extern void test_encoder(void);
 extern void test_decoder(void);
 extern void test_roundtrip(void);
+extern void test_modulator(void);
+extern void test_demodulator(void);
 
 int main(void)
 {
@@ -22,6 +24,8 @@ int main(void)
 	test_encoder();
 	test_decoder();
 	test_roundtrip();
+	test_modulator();
+	test_demodulator();
 
 	printf("\n%d passed, %d failed\n", test_pass, test_fail);
 	return test_fail > 0 ? 1 : 0;
