@@ -113,3 +113,40 @@ pocsag_err_t pocsag_modulate(pocsag_mod_t *mod,
 	*out_len = si;
 	return POCSAG_OK;
 }
+
+pocsag_err_t pocsag_baseband(const uint8_t *bits, size_t nbits,
+                             uint32_t sample_rate, uint32_t baud_rate,
+                             float *out, size_t out_cap,
+                             size_t *out_len)
+{
+	if (!bits || !out || !out_len)
+		return POCSAG_ERR_PARAM;
+	if (!pocsag_srate_valid(sample_rate))
+		return POCSAG_ERR_PARAM;
+	if (!pocsag_baud_valid(baud_rate))
+		return POCSAG_ERR_PARAM;
+	if (sample_rate / baud_rate < 5)
+		return POCSAG_ERR_PARAM;
+
+	double spb = (double)sample_rate / (double)baud_rate;
+	size_t needed = (size_t)(((uint64_t)nbits * sample_rate
+	                          + baud_rate - 1) / baud_rate);
+	if (needed > out_cap)
+		return POCSAG_ERR_OVERFLOW;
+
+	size_t si = 0;
+	for (size_t bi = 0; bi < nbits; bi++) {
+		int bit = (bits[bi / 8] >> (7 - (bi & 7))) & 1;
+		float level = bit ? -0.73f : 0.73f;
+
+		size_t next = (size_t)((double)(bi + 1) * spb + 0.5);
+		if (next > needed)
+			next = needed;
+
+		while (si < next)
+			out[si++] = level;
+	}
+
+	*out_len = si;
+	return POCSAG_OK;
+}

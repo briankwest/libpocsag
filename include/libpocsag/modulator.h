@@ -72,6 +72,29 @@ pocsag_err_t pocsag_modulate(pocsag_mod_t *mod,
                              float *out, size_t out_cap,
                              size_t *out_len);
 
+/* Generate baseband NRZ samples from a packed bitstream.
+ *
+ * Produces flat-level-per-bit output suitable for feeding an FM
+ * transmitter via line/mic input, or for direct decoding by
+ * multimon-ng (post-FM-discriminator format).
+ *
+ * Polarity (matches multimon-ng / standard FM discriminator):
+ *   bit 1 → -1.0  (negative level)
+ *   bit 0 → +1.0  (positive level)
+ *
+ * bits:        packed byte array (MSB-first, from pocsag_encode)
+ * nbits:       number of valid bits
+ * sample_rate: output sample rate in Hz (8000, 16000, 32000, 48000)
+ * baud_rate:   POCSAG baud rate (512, 1200, 2400)
+ * out:         output float sample buffer
+ * out_cap:     capacity of out in samples
+ * out_len:     receives the actual number of samples written
+ */
+pocsag_err_t pocsag_baseband(const uint8_t *bits, size_t nbits,
+                             uint32_t sample_rate, uint32_t baud_rate,
+                             float *out, size_t out_cap,
+                             size_t *out_len);
+
 #ifdef __cplusplus
 }
 #endif

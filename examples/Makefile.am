@@ -1,4 +1,4 @@
-noinst_PROGRAMS = encode_page decode_stream modem_demo gen_wav
+noinst_PROGRAMS = encode_page decode_stream modem_demo gen_wav gen_baseband
 
 encode_page_SOURCES = encode_page.c
 encode_page_CFLAGS = \
@@ -27,3 +27,10 @@ gen_wav_CFLAGS = \
 	-Wall -Wextra -pedantic \
 	-I$(top_srcdir)/include
 gen_wav_LDADD = $(top_builddir)/src/libpocsag.la -lm
+
+gen_baseband_SOURCES = gen_baseband.c
+gen_baseband_CFLAGS = \
+	-std=c99 \
+	-Wall -Wextra -pedantic \
+	-I$(top_srcdir)/include
+gen_baseband_LDADD = $(top_builddir)/src/libpocsag.la

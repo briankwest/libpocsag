@@ -1,17 +1,37 @@
 #include "pocsag_internal.h"
 
-static const char bcd_table[] = "0123456789*U -[]";
+/*
+ * POCSAG BCD uses bit-reversed nibbles: each 4-bit digit has its
+ * bits reversed before transmission (LSB transmitted first).
+ *
+ * Standard BCD:  0=0000, 1=0001, 2=0010, ..., 9=1001
+ * Reversed:      0=0000, 1=1000, 2=0100, ..., 9=1001
+ *
+ * The bcd_table maps each 4-bit REVERSED value back to the display
+ * character.  char_to_bcd maps a display character to its REVERSED
+ * 4-bit value for encoding.
+ */
+static const char bcd_table[] = "084 2*6]195-3U7[";
 
 static int char_to_bcd(char c)
 {
-	if (c >= '0' && c <= '9') return c - '0';
 	switch (c) {
-	case '*':           return 0xA;
-	case 'U': case 'u': return 0xB;
-	case ' ':           return 0xC;
-	case '-':           return 0xD;
-	case '[': case '(': return 0xE;
-	case ']': case ')': return 0xF;
+	case '0':           return 0;
+	case '1':           return 8;
+	case '2':           return 4;
+	case '3':           return 12;
+	case '4':           return 2;
+	case '5':           return 10;
+	case '6':           return 6;
+	case '7':           return 14;
+	case '8':           return 1;
+	case '9':           return 9;
+	case '*': case '.': return 5;
+	case 'U': case 'u': return 13;
+	case ' ':           return 3;
+	case '-':           return 11;
+	case '[': case '(': return 15;
+	case ']': case ')': return 7;
 	}
 	return -1;
 }
@@ -43,10 +63,10 @@ int pocsag_numeric_encode(const char *text, size_t len,
 		}
 	}
 
-	/* flush partial chunk (pad with space=0xC) */
+	/* flush partial chunk (pad with space=3, bit-reversed 0xC) */
 	if (digits > 0) {
 		while (digits < 5) {
-			chunk |= (0xCu << (16 - digits * 4));
+			chunk |= (3u << (16 - digits * 4));
 			digits++;
 		}
 		if (nchunks >= max_chunks)
