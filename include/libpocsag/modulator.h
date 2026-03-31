@@ -99,6 +99,20 @@ pocsag_err_t pocsag_baseband(const uint8_t *bits, size_t nbits,
                              float *out, size_t out_cap,
                              size_t *out_len);
 
+/* Baseband flags for pocsag_baseband_ex() */
+#define POCSAG_BASEBAND_DEEMPH  0x01  /* apply 75µs de-emphasis to cancel
+                                       * radio TX pre-emphasis */
+
+/* Extended baseband with flags.
+ * Same as pocsag_baseband() but accepts flags for signal conditioning.
+ * POCSAG_BASEBAND_DEEMPH: apply a 75µs first-order IIR lowpass so that
+ * after the radio's pre-emphasis the receiver gets a flat NRZ signal. */
+pocsag_err_t pocsag_baseband_ex(const uint8_t *bits, size_t nbits,
+                                uint32_t sample_rate, uint32_t baud_rate,
+                                int flags,
+                                float *out, size_t out_cap,
+                                size_t *out_len);
+
 #ifdef __cplusplus
 }
 #endif

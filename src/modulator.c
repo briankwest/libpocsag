@@ -119,6 +119,16 @@ pocsag_err_t pocsag_baseband(const uint8_t *bits, size_t nbits,
                              float *out, size_t out_cap,
                              size_t *out_len)
 {
+	return pocsag_baseband_ex(bits, nbits, sample_rate, baud_rate,
+	                          0, out, out_cap, out_len);
+}
+
+pocsag_err_t pocsag_baseband_ex(const uint8_t *bits, size_t nbits,
+                                uint32_t sample_rate, uint32_t baud_rate,
+                                int flags,
+                                float *out, size_t out_cap,
+                                size_t *out_len)
+{
 	if (!bits || !out || !out_len)
 		return POCSAG_ERR_PARAM;
 	if (!pocsag_srate_valid(sample_rate))
@@ -145,6 +155,18 @@ pocsag_err_t pocsag_baseband(const uint8_t *bits, size_t nbits,
 
 		while (si < next)
 			out[si++] = level;
+	}
+
+	/* Apply 75µs de-emphasis (first-order IIR lowpass) to pre-cancel
+	 * the radio's TX pre-emphasis.  After the radio boosts highs,
+	 * the receiver gets a flat NRZ signal. */
+	if ((flags & POCSAG_BASEBAND_DEEMPH) && si > 0) {
+		float alpha = 1.0f / (1.0f + (float)sample_rate * 75e-6f);
+		float prev = out[0];
+		for (size_t i = 1; i < si; i++) {
+			prev = prev + alpha * (out[i] - prev);
+			out[i] = prev;
+		}
 	}
 
 	*out_len = si;
