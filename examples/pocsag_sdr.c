@@ -316,7 +316,7 @@ int main(int argc, char **argv)
 
 		if (wav_fp) {
 			for (int j = 0; j < audio_pos; j++) {
-				float s = audio_buf[j] * 16000.0f;
+				float s = audio_buf[j] * (no_deemph ? 5000.0f : 16000.0f);
 				if (s > 32767.0f) s = 32767.0f;
 				if (s < -32768.0f) s = -32768.0f;
 				int16_t pcm = (int16_t)s;
@@ -331,7 +331,7 @@ int main(int argc, char **argv)
 		for (int j = 0; j < audio_pos; j++) {
 			/* scale to int16 range for RMS comparison with
 			 * sdr_record.c-style thresholds */
-			int32_t v = (int32_t)(audio_buf[j] * 16000.0f);
+			int32_t v = (int32_t)(audio_buf[j] * (no_deemph ? 5000.0f : 16000.0f));
 			rms_sum += (int64_t)v * v;
 		}
 		int32_t rms = (int32_t)sqrtf((float)(rms_sum / audio_pos));
