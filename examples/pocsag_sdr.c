@@ -372,12 +372,21 @@ int main(int argc, char **argv)
 
 		/* only feed audio when squelch is open */
 		if (sq_open) {
+			pocsag_dec_state_t prev = rx.decoder.state;
+
 			if (use_fsk)
 				pocsag_demodulate(&rx.demod, audio_buf,
 				                  (size_t)audio_pos);
 			else
 				pocsag_demod_baseband(&rx.demod, audio_buf,
 				                      (size_t)audio_pos);
+
+			/* After a complete batch, the decoder returns to
+			 * HUNTING.  Reset the demod so the bit clock
+			 * re-syncs to the next preamble. */
+			if (prev == POCSAG_DEC_BATCH &&
+			    rx.decoder.state == POCSAG_DEC_HUNTING)
+				pocsag_demod_reset(&rx.demod);
 		}
 
 		/* periodic stats */
