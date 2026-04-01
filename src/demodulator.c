@@ -139,9 +139,21 @@ pocsag_err_t pocsag_demod_baseband(pocsag_demod_t *d,
 	if (!pocsag_baud_valid(d->baud_rate) || d->sample_rate == 0)
 		return POCSAG_ERR_PARAM;
 
+	/* Two-stage cascaded IIR low-pass at 1.5x baud rate to reject
+	 * wideband FM discriminator noise.  Two stages give -12 dB/oct
+	 * rolloff (vs -6 for one stage), which is critical because the
+	 * FM noise floor is often louder than the POCSAG data signal.
+	 *
+	 * mark_q  = stage 1 state
+	 * space_q = stage 2 state */
+	double alpha_lp = 1.0 / (1.0 + (double)d->sample_rate
+	                  / (2.0 * M_PI * 1.5 * (double)d->baud_rate));
+
 	for (size_t i = 0; i < nsamples; i++) {
-		/* accumulate sample level over the bit period */
-		d->mark_i += (double)samples[i];
+		/* two-stage IIR low-pass, then accumulate */
+		d->mark_q  += alpha_lp * ((double)samples[i] - d->mark_q);
+		d->space_q += alpha_lp * (d->mark_q - d->space_q);
+		d->mark_i  += d->space_q;
 		d->sample_idx++;
 
 		d->bit_phase += d->phase_inc;
@@ -164,6 +176,9 @@ pocsag_err_t pocsag_demod_baseband(pocsag_demod_t *d,
 
 			d->mark_i     = 0.0;
 			d->sample_idx = 0;
+			/* note: mark_q (LPF state) is NOT reset — it
+			 * carries the filter memory across bit boundaries
+			 * for smooth continuity */
 		}
 	}
 

@@ -3,11 +3,12 @@
  *
  * Pipeline:
  *   RTL-SDR IQ @ 240 kHz → FM discriminator → DC block → de-emphasis
- *   → decimate to 48 kHz → baseband slicer → POCSAG decoder
+ *   → decimate to 48 kHz → squelch gate → baseband slicer → POCSAG decoder
  *
  * Usage:
  *   pocsag_sdr -f 462.550 -b 1200
  *   pocsag_sdr -f 462.550 -b 1200 -g 40 -i -v
+ *   pocsag_sdr -f 462.550 -b 1200 -S 15000:17000
  */
 
 #define _POSIX_C_SOURCE 200112L
@@ -27,6 +28,13 @@
 #define DEFAULT_SDR_RATE   240000
 #define DEFAULT_AUDIO_RATE 48000
 #define IQ_BUFSZ           (16384 * 4)   /* 65536 bytes = 32768 IQ samples */
+
+/* Squelch defaults (FM-inverted: low RMS = signal present).
+ * These match sdr_record.c / kerchunk proven values. */
+#define DEFAULT_SQ_OPEN    15000
+#define DEFAULT_SQ_CLOSE   17000
+#define SQ_DEBOUNCE_OPEN   3
+#define SQ_DEBOUNCE_CLOSE  5
 
 static volatile int g_running = 1;
 
@@ -75,39 +83,50 @@ static void usage(const char *prog)
 	fprintf(stderr,
 	    "Usage: %s -f <freq_mhz> [options]\n"
 	    "\n"
-	    "  -f freq   Frequency in MHz (required)\n"
-	    "  -b baud   POCSAG baud rate: 512, 1200, 2400 (default 1200)\n"
-	    "  -d index  RTL-SDR device index (default 0)\n"
-	    "  -g gain   Tuner gain in dB*10 (default auto)\n"
-	    "  -s rate   SDR sample rate (default %d)\n"
-	    "  -r rate   Audio output rate (default %d)\n"
-	    "  -i        Invert polarity\n"
-	    "  -v        Verbose (print stats periodically)\n",
-	    prog, DEFAULT_SDR_RATE, DEFAULT_AUDIO_RATE);
+	    "  -f freq       Frequency in MHz (required)\n"
+	    "  -b baud       POCSAG baud rate: 512, 1200, 2400 (default 1200)\n"
+	    "  -d index      RTL-SDR device index (default 0)\n"
+	    "  -g gain       Tuner gain in dB*10 (default auto)\n"
+	    "  -s rate       SDR sample rate (default %d)\n"
+	    "  -r rate       Audio output rate (default %d)\n"
+	    "  -S open:close Squelch thresholds (default %d:%d)\n"
+	    "  -m mode       Demod mode: fsk (default) or baseband\n"
+	    "  -w file       Dump raw audio to 16-bit WAV for analysis\n"
+	    "  -i            Invert polarity\n"
+	    "  -v            Verbose (print stats periodically)\n",
+	    prog, DEFAULT_SDR_RATE, DEFAULT_AUDIO_RATE,
+	    DEFAULT_SQ_OPEN, DEFAULT_SQ_CLOSE);
 }
 
 int main(int argc, char **argv)
 {
-	double    freq_mhz  = 0.0;
-	uint32_t  baud      = 1200;
-	int       dev_idx   = 0;
-	int       gain      = -1;         /* -1 = auto */
-	uint32_t  sdr_rate  = DEFAULT_SDR_RATE;
-	uint32_t  audio_rate = DEFAULT_AUDIO_RATE;
-	int       invert    = 0;
-	int       verbose   = 0;
+	double    freq_mhz    = 0.0;
+	uint32_t  baud        = 1200;
+	int       dev_idx     = 0;
+	int       gain        = -1;         /* -1 = auto */
+	uint32_t  sdr_rate    = DEFAULT_SDR_RATE;
+	uint32_t  audio_rate  = DEFAULT_AUDIO_RATE;
+	int       sq_open_th  = DEFAULT_SQ_OPEN;
+	int       sq_close_th = DEFAULT_SQ_CLOSE;
+	const char *wav_path  = NULL;
+	int       use_fsk     = 1;        /* default: FSK correlator */
+	int       invert      = 0;
+	int       verbose     = 0;
 
 	int opt;
-	while ((opt = getopt(argc, argv, "f:b:d:g:s:r:ivh")) != -1) {
+	while ((opt = getopt(argc, argv, "f:b:d:g:s:r:S:m:w:ivh")) != -1) {
 		switch (opt) {
-		case 'f': freq_mhz   = atof(optarg); break;
-		case 'b': baud       = (uint32_t)atoi(optarg); break;
-		case 'd': dev_idx    = atoi(optarg); break;
-		case 'g': gain       = atoi(optarg); break;
-		case 's': sdr_rate   = (uint32_t)atoi(optarg); break;
-		case 'r': audio_rate = (uint32_t)atoi(optarg); break;
-		case 'i': invert     = 1; break;
-		case 'v': verbose    = 1; break;
+		case 'f': freq_mhz    = atof(optarg); break;
+		case 'b': baud        = (uint32_t)atoi(optarg); break;
+		case 'd': dev_idx     = atoi(optarg); break;
+		case 'g': gain        = atoi(optarg); break;
+		case 's': sdr_rate    = (uint32_t)atoi(optarg); break;
+		case 'r': audio_rate  = (uint32_t)atoi(optarg); break;
+		case 'S': sscanf(optarg, "%d:%d", &sq_open_th, &sq_close_th); break;
+		case 'm': use_fsk     = (strcmp(optarg, "baseband") != 0); break;
+		case 'w': wav_path    = optarg; break;
+		case 'i': invert      = 1; break;
+		case 'v': verbose     = 1; break;
 		default:  usage(argv[0]); return 1;
 		}
 	}
@@ -164,9 +183,12 @@ int main(int argc, char **argv)
 
 	rtlsdr_reset_buffer(dev);
 
-	fprintf(stderr, "%.4f MHz | SDR %u Hz | Audio %u Hz | POCSAG %u baud%s\n",
+	fprintf(stderr, "%.4f MHz | SDR %u Hz | Audio %u Hz | POCSAG %u baud | %s%s\n",
 	        freq_hz / 1e6, sdr_rate, audio_rate, baud,
+	        use_fsk ? "FSK" : "baseband",
 	        invert ? " | INVERTED" : "");
+	fprintf(stderr, "Squelch: open=%d close=%d (FM-inverted RMS)\n",
+	        sq_open_th, sq_close_th);
 	fprintf(stderr, "Listening... (Ctrl-C to stop)\n\n");
 
 	signal(SIGINT, sighandler);
@@ -200,6 +222,41 @@ int main(int argc, char **argv)
 
 	/* polarity: invert flips the sign of the FM discriminator output */
 	float pol = invert ? -1.0f : 1.0f;
+
+	/* ── WAV dump (for signal analysis) ── */
+
+	FILE *wav_fp = NULL;
+	uint32_t wav_samples = 0;
+
+	if (wav_path) {
+		wav_fp = fopen(wav_path, "wb");
+		if (!wav_fp) {
+			perror(wav_path);
+			rtlsdr_close(dev);
+			return 1;
+		}
+		/* write placeholder header, fix on close */
+		uint8_t hdr[44] = {0};
+		memcpy(hdr, "RIFF", 4);
+		memcpy(hdr + 8, "WAVEfmt ", 8);
+		uint32_t v;
+		v = 16;     memcpy(hdr + 16, &v, 4);   /* chunk size */
+		uint16_t s;
+		s = 1;      memcpy(hdr + 20, &s, 2);   /* PCM */
+		s = 1;      memcpy(hdr + 22, &s, 2);   /* mono */
+		v = audio_rate; memcpy(hdr + 24, &v, 4);
+		v = audio_rate * 2; memcpy(hdr + 28, &v, 4);
+		s = 2;      memcpy(hdr + 32, &s, 2);   /* block align */
+		s = 16;     memcpy(hdr + 34, &s, 2);   /* bits */
+		memcpy(hdr + 36, "data", 4);
+		fwrite(hdr, 1, 44, wav_fp);
+		fprintf(stderr, "Dumping audio to %s\n", wav_path);
+	}
+
+	/* ── squelch state (FM-inverted: low RMS = signal) ── */
+
+	int sq_open = 0;
+	int sq_open_cnt = 0, sq_close_cnt = 0;
 
 	/* ── main loop ── */
 
@@ -251,17 +308,84 @@ int main(int argc, char **argv)
 
 		if (audio_pos == 0) continue;
 
-		/* feed baseband audio into POCSAG demodulator */
-		pocsag_demod_baseband(&rx.demod, audio_buf, (size_t)audio_pos);
+		/* ── dump raw audio to WAV (all audio, pre-squelch) ── */
+
+		if (wav_fp) {
+			for (int j = 0; j < audio_pos; j++) {
+				float s = audio_buf[j] * 16000.0f;
+				if (s > 32767.0f) s = 32767.0f;
+				if (s < -32768.0f) s = -32768.0f;
+				int16_t pcm = (int16_t)s;
+				fwrite(&pcm, 2, 1, wav_fp);
+				wav_samples++;
+			}
+		}
+
+		/* ── squelch: compute RMS of this audio chunk ── */
+
+		int64_t rms_sum = 0;
+		for (int j = 0; j < audio_pos; j++) {
+			/* scale to int16 range for RMS comparison with
+			 * sdr_record.c-style thresholds */
+			int32_t v = (int32_t)(audio_buf[j] * 16000.0f);
+			rms_sum += (int64_t)v * v;
+		}
+		int32_t rms = (int32_t)sqrtf((float)(rms_sum / audio_pos));
+
+		/* FM-inverted squelch: low RMS = signal, high RMS = noise */
+		if (!sq_open) {
+			if (rms < sq_open_th) {
+				sq_open_cnt++;
+				if (sq_open_cnt >= SQ_DEBOUNCE_OPEN) {
+					sq_open = 1;
+					sq_close_cnt = 0;
+					if (verbose)
+						fprintf(stderr, "[squelch] OPEN  rms=%d\n",
+						        rms);
+					/* reset decoder state on channel open so
+					 * stale noise bits don't poison sync */
+					pocsag_decoder_reset(&rx.decoder);
+					pocsag_demod_reset(&rx.demod);
+				}
+			} else {
+				sq_open_cnt = 0;
+			}
+		} else {
+			if (rms > sq_close_th) {
+				sq_close_cnt++;
+				if (sq_close_cnt >= SQ_DEBOUNCE_CLOSE) {
+					sq_open = 0;
+					sq_open_cnt = 0;
+					if (verbose)
+						fprintf(stderr, "[squelch] CLOSE rms=%d\n",
+						        rms);
+					pocsag_decoder_flush(&rx.decoder);
+				}
+			} else {
+				sq_close_cnt = 0;
+			}
+		}
+
+		/* only feed audio when squelch is open */
+		if (sq_open) {
+			if (use_fsk)
+				pocsag_demodulate(&rx.demod, audio_buf,
+				                  (size_t)audio_pos);
+			else
+				pocsag_demod_baseband(&rx.demod, audio_buf,
+				                      (size_t)audio_pos);
+		}
 
 		/* periodic stats */
-		if (verbose && rx.demod.stat_bits - rx.last_report >= 10000) {
+		if (verbose && rx.demod.stat_bits > 0 &&
+		    rx.demod.stat_bits - rx.last_report >= 5000) {
 			fprintf(stderr, "[stats] bits=%u transitions=%u msgs=%u "
-			        "bch_ok=%u bch_err=%u\n",
+			        "bch_ok=%u bch_err=%u rms=%d sq=%s\n",
 			        rx.demod.stat_bits, rx.demod.stat_transitions,
 			        rx.decoder.stat_messages,
 			        rx.decoder.stat_corrected,
-			        rx.decoder.stat_errors);
+			        rx.decoder.stat_errors,
+			        rms, sq_open ? "OPEN" : "closed");
 			rx.last_report = rx.demod.stat_bits;
 		}
 	}
@@ -272,6 +396,18 @@ int main(int argc, char **argv)
 	fprintf(stderr, "\nStopped. bits=%u transitions=%u messages=%u\n",
 	        rx.demod.stat_bits, rx.demod.stat_transitions,
 	        rx.decoder.stat_messages);
+
+	/* fix WAV header with final sizes */
+	if (wav_fp) {
+		uint32_t data_bytes = wav_samples * 2;
+		uint32_t file_size  = 36 + data_bytes;
+		fseek(wav_fp, 4, SEEK_SET);
+		fwrite(&file_size, 4, 1, wav_fp);
+		fseek(wav_fp, 40, SEEK_SET);
+		fwrite(&data_bytes, 4, 1, wav_fp);
+		fclose(wav_fp);
+		fprintf(stderr, "Wrote %u samples to WAV\n", wav_samples);
+	}
 
 	free(audio_buf);
 	free(iq_buf);
