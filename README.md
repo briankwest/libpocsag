@@ -14,8 +14,10 @@ C99, zero dynamic allocation, no dependencies beyond libc and libm. All structs 
   - [Streaming Decoder](#streaming-decoder)
   - [FSK Modulator](#fsk-modulator)
   - [Baseband NRZ Output](#baseband-nrz-output)
+  - [Baseband Demodulator](#baseband-demodulator)
   - [FSK Demodulator](#fsk-demodulator)
   - [Full Pipeline](#full-pipeline)
+  - [SDR Receiver](#sdr-receiver)
   - [BCH Error Correction](#bch-error-correction)
   - [Error Codes](#error-codes)
 - [Protocol Details](#protocol-details)
@@ -63,11 +65,11 @@ C99, zero dynamic allocation, no dependencies beyond libc and libm. All structs 
 ./autogen.sh    # generate configure (requires autoconf, automake, libtool)
 ./configure
 make            # builds libpocsag.so, libpocsag.a, and example programs
-make check      # runs the test suite (63 tests)
+make check      # runs the test suite (65 tests)
 make install    # installs library, headers, and pkg-config file
 ```
 
-Compiles with `-Wall -Wextra -pedantic` in C99 strict mode. Requires a C99 compiler, libc, and libm.
+Compiles with `-Wall -Wextra -pedantic` in C99 strict mode. Requires a C99 compiler, libc, and libm. The `pocsag_sdr` example additionally requires `librtlsdr-dev`.
 
 ### Debian Packages
 
@@ -211,6 +213,25 @@ pocsag_baseband(bitstream, bs_bits, 48000, POCSAG_BAUD_1200,
 
 This is a stateless convenience function -- no init/reset needed. The output can be piped directly into an FM transmitter's mic/line input or written to a WAV file for decoding with `multimon-ng -a POCSAG1200`.
 
+### Baseband Demodulator
+
+Recover bits from FM discriminator output (flat-level baseband) using a threshold slicer:
+
+```c
+/* Set up decoder + demodulator */
+pocsag_decoder_t dec;
+pocsag_decoder_init(&dec, on_message, NULL);
+
+pocsag_demod_t demod;
+pocsag_demod_init(&demod, 48000, POCSAG_BAUD_1200, on_bit, &dec);
+
+/* Feed FM discriminator audio (baseband NRZ levels) */
+pocsag_demod_baseband(&demod, samples, nsamples);
+pocsag_decoder_flush(&dec);
+```
+
+This is the receive-side counterpart to `pocsag_baseband()`. It sums sample values over each bit period and thresholds at zero: negative → bit 1, positive → bit 0. Use this when processing audio from an FM receiver's discriminator output or from an SDR FM demodulator.
+
 ### FSK Demodulator
 
 Recover bits from FSK audio using a non-coherent quadrature correlation detector:
@@ -270,6 +291,57 @@ pocsag_demodulate(&demod, audio, alen);
 pocsag_decoder_flush(&dec);
 /* on_message fires with addr=1234, msg="5551234" */
 ```
+
+### SDR Receiver
+
+The `pocsag_sdr` example is a complete RTL-SDR POCSAG receiver. It tunes to a frequency, FM-demodulates the IQ stream, and decodes POCSAG messages using the library's baseband demodulator and decoder:
+
+```bash
+# Receive POCSAG at 1200 baud on a GMRS channel
+./pocsag_sdr -f 462.550 -b 1200
+
+# With manual gain, inverted polarity, and verbose stats
+./pocsag_sdr -f 462.550 -b 1200 -g 40 -i -v
+
+# All three baud rates on the same frequency
+./pocsag_sdr -f 462.550 -b 512
+./pocsag_sdr -f 462.550 -b 2400
+```
+
+Output:
+```
+462.5500 MHz | SDR 240000 Hz | Audio 48000 Hz | POCSAG 1200 baud
+Listening... (Ctrl-C to stop)
+
+[POCSAG] addr=1234567 func=3 type=alpha     msg="Hello from kerchunk"
+[POCSAG] addr=1234567 func=0 type=numeric   msg="5551234"
+[POCSAG] addr=1234567 func=1 type=tone-only msg=""
+```
+
+The internal pipeline:
+```
+RTL-SDR IQ @ 240 kHz
+  → FM discriminator (atan2 phase detection)
+  → DC blocking filter
+  → 75 µs de-emphasis
+  → decimate to 48 kHz
+  → pocsag_demod_baseband() → pocsag_decoder
+```
+
+Options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-f freq` | (required) | Frequency in MHz |
+| `-b baud` | 1200 | POCSAG baud rate (512, 1200, 2400) |
+| `-d index` | 0 | RTL-SDR device index |
+| `-g gain` | auto | Tuner gain in dB*10 |
+| `-s rate` | 240000 | SDR sample rate |
+| `-r rate` | 48000 | Audio output rate |
+| `-i` | off | Invert polarity |
+| `-v` | off | Print periodic stats |
+
+Requires `librtlsdr-dev` at build time and an RTL-SDR dongle at runtime.
 
 ### BCH Error Correction
 
@@ -438,8 +510,10 @@ demodulator
   test_demod_reset                                        PASS
   test_demod_all_rates                                    PASS
   test_demod_reject_low_spb                               PASS
+  test_demod_baseband_roundtrip                           PASS
+  test_demod_baseband_alpha                               PASS
 
-63 passed, 0 failed
+65 passed, 0 failed
 ```
 
 Tests cover:
@@ -452,6 +526,7 @@ Tests cover:
 - Full encode-then-decode round-trips for numeric, alpha, tone-only, multi-message, and edge-case addresses
 - FSK modulator: init, sample count calculation, output amplitude, phase continuity, error handling
 - FSK demodulator: constant-tone detection, bit-level round-trip, full message round-trip (numeric and alpha), all sample-rate/baud-rate combinations, invalid rate rejection
+- Baseband demodulator: encode → baseband → demod → decode loopback for numeric and alpha messages
 
 ## Example Programs
 
@@ -462,6 +537,7 @@ Tests cover:
 | `modem_demo` | Full encode → modulate → demodulate → decode round-trip demo |
 | `gen_wav` | Generate FSK WAV test files for all sample-rate/baud-rate combinations |
 | `gen_baseband` | Generate baseband NRZ WAV test files for all combinations |
+| `pocsag_sdr` | RTL-SDR POCSAG receiver (requires librtlsdr) |
 
 ```bash
 # Encode a numeric page
@@ -494,6 +570,10 @@ Tests cover:
 # Generate WAV test files
 ./gen_wav wav/          # FSK tone WAVs in wav/
 ./gen_baseband bb/      # Baseband NRZ WAVs in bb/
+
+# Receive POCSAG from an RTL-SDR on a GMRS channel
+./pocsag_sdr -f 462.550 -b 1200
+# [POCSAG] addr=1234567 func=3 type=alpha     msg="Hello from kerchunk"
 ```
 
 ## Project Structure
@@ -509,7 +589,7 @@ libpocsag/
     encoder.h           Batch encoder API
     decoder.h           Streaming decoder API with callback
     modulator.h         FSK modulator, baseband NRZ, sample-rate constants
-    demodulator.h       FSK demodulator with bit callback
+    demodulator.h       FSK and baseband demodulator with bit callback
   src/
     pocsag_internal.h   Private types, bitstream writer, internal prototypes
     error.c             Error string table
@@ -520,7 +600,7 @@ libpocsag/
     encoder.c           Batch encoder with frame packing and continuation
     decoder.c           Streaming state-machine decoder
     modulator.c         FSK modulator and baseband NRZ generator
-    demodulator.c       Non-coherent quadrature correlation demodulator
+    demodulator.c       FSK correlator and baseband NRZ demodulator
   tests/
     test.h              Test harness macros (ASSERT, RUN_TEST, etc.)
     test_main.c         Test runner
@@ -532,13 +612,14 @@ libpocsag/
     test_decoder.c      Streaming decoder tests (6 tests)
     test_roundtrip.c    Full encode-decode round-trip tests (6 tests)
     test_modulator.c    FSK modulator tests (7 tests)
-    test_demodulator.c  FSK demodulator and full-pipeline tests (10 tests)
+    test_demodulator.c  FSK and baseband demodulator tests (12 tests)
   examples/
     encode_page.c       Encode a page to raw bitstream on stdout
     decode_stream.c     Decode raw bitstream from stdin
     modem_demo.c        Full modem round-trip demonstration
     gen_wav.c           Generate FSK WAV test files
     gen_baseband.c      Generate baseband NRZ WAV test files
+    pocsag_sdr.c        RTL-SDR POCSAG receiver
   debian/               Debian packaging files
   configure.ac          Autoconf configuration
   Makefile.am           Top-level automake
@@ -599,6 +680,15 @@ The `pocsag_baseband()` function produces flat-level-per-bit output:
 - **bit 0** → +0.73 (positive level)
 
 This polarity matches the standard FM discriminator output expected by multimon-ng and similar decoders. The output is suitable for feeding directly into an FM transmitter's audio input or for writing to a WAV file for offline decoding.
+
+### Baseband Demodulator
+
+The `pocsag_demod_baseband()` function recovers bits from FM discriminator output:
+
+- **Level accumulator**: Sums all sample values over each bit period
+- **Threshold slicer**: Negative sum → bit 1, positive sum → bit 0 (matches `pocsag_baseband()` polarity)
+- **Reuses `pocsag_demod_t`**: Same struct, bit-phase accumulator, callback, and statistics as the FSK demodulator
+- **No frequency knowledge needed**: Works purely on amplitude levels, making it suitable for post-FM-discriminator audio from any source (SDR, receiver line out, WAV file)
 
 ### FSK Demodulator
 
