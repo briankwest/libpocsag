@@ -351,6 +351,83 @@ static void test_demod_reject_low_spb(void)
 }
 
 /* ------------------------------------------------------------------ */
+static void test_demod_baseband_roundtrip(void)
+{
+	/* encode → pocsag_baseband → pocsag_demod_baseband → decode */
+	uint8_t bitstream[POCSAG_BITSTREAM_MAX];
+	size_t  bs_len = 0, bs_bits = 0;
+
+	ASSERT(pocsag_encode_single(1234, POCSAG_FUNC_NUMERIC,
+	                            POCSAG_MSG_NUMERIC, "5551234",
+	                            bitstream, sizeof(bitstream),
+	                            &bs_len, &bs_bits) == POCSAG_OK);
+
+	/* generate baseband NRZ */
+	static float audio[65536];
+	size_t alen = 0;
+	ASSERT(pocsag_baseband(bitstream, bs_bits, 48000, 1200,
+	                       audio, 65536, &alen) == POCSAG_OK);
+
+	/* demodulate baseband → collect bits */
+	bit_buf_t bb;
+	memset(&bb, 0, sizeof(bb));
+
+	pocsag_demod_t dem;
+	pocsag_demod_init(&dem, 48000, 1200, collect_bit, &bb);
+	ASSERT(pocsag_demod_baseband(&dem, audio, alen) == POCSAG_OK);
+
+	/* decode */
+	rx_ctx_t rx;
+	memset(&rx, 0, sizeof(rx));
+
+	pocsag_decoder_t dec;
+	pocsag_decoder_init(&dec, on_msg, &rx);
+	pocsag_decoder_feed_bits(&dec, bb.bits, bb.count);
+	pocsag_decoder_flush(&dec);
+
+	ASSERT(rx.got == 1);
+	ASSERT_EQ_INT((int)rx.msg.address, 1234);
+	ASSERT_EQ_INT((int)rx.msg.type, POCSAG_MSG_NUMERIC);
+	ASSERT_STR_EQ(rx.msg.text, "5551234");
+}
+
+/* ------------------------------------------------------------------ */
+static void test_demod_baseband_alpha(void)
+{
+	uint8_t bitstream[POCSAG_BITSTREAM_MAX];
+	size_t  bs_len = 0, bs_bits = 0;
+
+	ASSERT(pocsag_encode_single(2000, POCSAG_FUNC_ALPHA,
+	                            POCSAG_MSG_ALPHA, "Hello POCSAG",
+	                            bitstream, sizeof(bitstream),
+	                            &bs_len, &bs_bits) == POCSAG_OK);
+
+	static float audio[65536];
+	size_t alen = 0;
+	ASSERT(pocsag_baseband(bitstream, bs_bits, 48000, 1200,
+	                       audio, 65536, &alen) == POCSAG_OK);
+
+	bit_buf_t bb;
+	memset(&bb, 0, sizeof(bb));
+
+	pocsag_demod_t dem;
+	pocsag_demod_init(&dem, 48000, 1200, collect_bit, &bb);
+	ASSERT(pocsag_demod_baseband(&dem, audio, alen) == POCSAG_OK);
+
+	rx_ctx_t rx;
+	memset(&rx, 0, sizeof(rx));
+
+	pocsag_decoder_t dec;
+	pocsag_decoder_init(&dec, on_msg, &rx);
+	pocsag_decoder_feed_bits(&dec, bb.bits, bb.count);
+	pocsag_decoder_flush(&dec);
+
+	ASSERT(rx.got == 1);
+	ASSERT_EQ_INT((int)rx.msg.address, 2000);
+	ASSERT_STR_EQ(rx.msg.text, "Hello POCSAG");
+}
+
+/* ------------------------------------------------------------------ */
 void test_demodulator(void)
 {
 	printf("demodulator\n");
@@ -364,4 +441,6 @@ void test_demodulator(void)
 	RUN_TEST(test_demod_reset);
 	RUN_TEST(test_demod_all_rates);
 	RUN_TEST(test_demod_reject_low_spb);
+	RUN_TEST(test_demod_baseband_roundtrip);
+	RUN_TEST(test_demod_baseband_alpha);
 }

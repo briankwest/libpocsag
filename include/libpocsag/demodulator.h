@@ -76,6 +76,21 @@ pocsag_err_t pocsag_demodulate(pocsag_demod_t *demod,
                                const float *samples,
                                size_t nsamples);
 
+/* Baseband NRZ demodulator.  Recovers bits from FM discriminator
+ * output (flat-level-per-bit) by summing sample values over each
+ * bit period and thresholding at zero.
+ *
+ * Polarity (matches pocsag_baseband() output / standard FM discrim):
+ *   negative level → bit 1
+ *   positive level → bit 0
+ *
+ * Reuses the same pocsag_demod_t struct and bit callback.
+ * The mark_freq / space_freq fields are unused in this mode.
+ */
+pocsag_err_t pocsag_demod_baseband(pocsag_demod_t *demod,
+                                   const float *samples,
+                                   size_t nsamples);
+
 #ifdef __cplusplus
 }
 #endif

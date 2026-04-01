@@ -130,3 +130,42 @@ pocsag_err_t pocsag_demodulate(pocsag_demod_t *d,
 
 	return POCSAG_OK;
 }
+
+pocsag_err_t pocsag_demod_baseband(pocsag_demod_t *d,
+                                   const float *samples, size_t nsamples)
+{
+	if (!d || !samples)
+		return POCSAG_ERR_PARAM;
+	if (!pocsag_baud_valid(d->baud_rate) || d->sample_rate == 0)
+		return POCSAG_ERR_PARAM;
+
+	for (size_t i = 0; i < nsamples; i++) {
+		/* accumulate sample level over the bit period */
+		d->mark_i += (double)samples[i];
+		d->sample_idx++;
+
+		d->bit_phase += d->phase_inc;
+
+		if (d->bit_phase >= 1.0) {
+			/* decision: negative sum → bit 1, positive → bit 0
+			 * (matches pocsag_baseband() polarity) */
+			int bit = (d->mark_i < 0.0) ? 1 : 0;
+
+			if (d->last_bit >= 0 && bit != d->last_bit)
+				d->stat_transitions++;
+
+			d->last_bit   = bit;
+			d->last_energy = d->mark_i;
+			d->bit_phase -= 1.0;
+
+			if (d->callback)
+				d->callback(bit, d->user);
+			d->stat_bits++;
+
+			d->mark_i     = 0.0;
+			d->sample_idx = 0;
+		}
+	}
+
+	return POCSAG_OK;
+}
