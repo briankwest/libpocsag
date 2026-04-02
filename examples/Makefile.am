@@ -40,4 +40,4 @@ pocsag_sdr_CFLAGS = \
 	-std=c99 \
 	-Wall -Wextra -pedantic \
 	-I$(top_srcdir)/include
-pocsag_sdr_LDADD = $(top_builddir)/src/libpocsag.la -lrtlsdr -lm
+pocsag_sdr_LDADD = $(top_builddir)/src/libpocsag.la -lrtlsdr -lm -lpthread
