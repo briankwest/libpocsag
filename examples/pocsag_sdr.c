@@ -343,7 +343,7 @@ int main(int argc, char **argv)
 				rms_baseline = rms_baseline + (rms - rms_baseline) / 16;
 
 			int dip = (rms_baseline > 1000 && rms < rms_baseline * 2 / 5);
-			int abs_open = (rms < sq_open_th);
+			int abs_open = (rms_baseline < 1000 && rms < sq_open_th);
 			if (dip || abs_open) {
 				sq_open_cnt++;
 				if (sq_open_cnt >= SQ_DEBOUNCE_OPEN) {
@@ -358,7 +358,7 @@ int main(int argc, char **argv)
 		} else {
 			int recovered = (rms_baseline > 1000 &&
 			                 rms > rms_baseline * 3 / 5);
-			int abs_close = (rms > sq_close_th);
+			int abs_close = (rms_baseline < 1000 && rms > sq_close_th);
 			if (recovered || abs_close) {
 				sq_close_cnt++;
 				if (sq_close_cnt >= SQ_DEBOUNCE_CLOSE) {
