@@ -33,17 +33,18 @@ static void test_mod_init_custom(void)
 static void test_mod_samples_needed(void)
 {
 	pocsag_mod_t m;
+	size_t leadin_48k = 48000 * POCSAG_LEADIN_MS / 1000;
 
-	/* 48000 / 1200 = 40 samples per bit, exact */
+	/* 48000 / 1200 = 40 samples per bit + lead-in */
 	pocsag_mod_init(&m, 48000, 1200);
-	ASSERT(pocsag_mod_samples_needed(&m, 1)   == 40);
-	ASSERT(pocsag_mod_samples_needed(&m, 10)  == 400);
-	ASSERT(pocsag_mod_samples_needed(&m, 100) == 4000);
+	ASSERT(pocsag_mod_samples_needed(&m, 1)   == 40 + leadin_48k);
+	ASSERT(pocsag_mod_samples_needed(&m, 10)  == 400 + leadin_48k);
+	ASSERT(pocsag_mod_samples_needed(&m, 100) == 4000 + leadin_48k);
 
 	/* 48000 / 512 = 93.75 spb — ceiling applies */
 	pocsag_mod_init(&m, 48000, 512);
-	ASSERT(pocsag_mod_samples_needed(&m, 1) == 94);
-	ASSERT(pocsag_mod_samples_needed(&m, 4) == 375);
+	ASSERT(pocsag_mod_samples_needed(&m, 1) == 94 + leadin_48k);
+	ASSERT(pocsag_mod_samples_needed(&m, 4) == 375 + leadin_48k);
 }
 
 /* ------------------------------------------------------------------ */
@@ -52,18 +53,19 @@ static void test_mod_output_count(void)
 	pocsag_mod_t m;
 	pocsag_mod_init(&m, 48000, 1200);
 
-	uint8_t bits[2] = { 0xA5, 0x00 };   /* 10100101 00000000 */
-	float   buf[800];
+	uint8_t bits[2] = { 0xA5, 0x00 };
+	size_t leadin = 48000 * POCSAG_LEADIN_MS / 1000;
+	static float buf[25000];
 	size_t  len = 0;
 
-	/* modulate 8 bits → 320 samples */
-	ASSERT(pocsag_modulate(&m, bits, 8, buf, 800, &len) == POCSAG_OK);
-	ASSERT(len == 320);
+	/* modulate 8 bits → 320 + lead-in samples */
+	ASSERT(pocsag_modulate(&m, bits, 8, buf, sizeof(buf)/sizeof(buf[0]), &len) == POCSAG_OK);
+	ASSERT(len == 320 + leadin);
 
-	/* modulate 16 bits → 640 samples */
+	/* modulate 16 bits → 640 + lead-in samples */
 	pocsag_mod_reset(&m);
-	ASSERT(pocsag_modulate(&m, bits, 16, buf, 800, &len) == POCSAG_OK);
-	ASSERT(len == 640);
+	ASSERT(pocsag_modulate(&m, bits, 16, buf, sizeof(buf)/sizeof(buf[0]), &len) == POCSAG_OK);
+	ASSERT(len == 640 + leadin);
 }
 
 /* ------------------------------------------------------------------ */
@@ -74,10 +76,10 @@ static void test_mod_amplitude(void)
 
 	/* preamble byte: 10101010 */
 	uint8_t bits[1] = { 0xAA };
-	float   buf[320];
+	static float buf[25000];
 	size_t  len = 0;
 
-	ASSERT(pocsag_modulate(&m, bits, 8, buf, 320, &len) == POCSAG_OK);
+	ASSERT(pocsag_modulate(&m, bits, 8, buf, sizeof(buf)/sizeof(buf[0]), &len) == POCSAG_OK);
 	for (size_t i = 0; i < len; i++) {
 		ASSERT(buf[i] >= -1.0f && buf[i] <= 1.0f);
 	}
@@ -93,10 +95,10 @@ static void test_mod_phase_continuity(void)
 	 * samples differ by more than what one sample step of the higher
 	 * frequency could produce.  max_delta = 2*sin(pi*f/fs). */
 	uint8_t bits[4] = { 0xAA, 0xAA, 0xAA, 0xAA };
-	float   buf[1280];
+	static float buf[26000];
 	size_t  len = 0;
 
-	ASSERT(pocsag_modulate(&m, bits, 32, buf, 1280, &len) == POCSAG_OK);
+	ASSERT(pocsag_modulate(&m, bits, 32, buf, sizeof(buf)/sizeof(buf[0]), &len) == POCSAG_OK);
 
 	double max_omega = 2.0 * M_PI * (double)POCSAG_FSK_SPACE_HZ(1200)
 	                   / 48000.0;

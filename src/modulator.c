@@ -54,9 +54,10 @@ size_t pocsag_mod_samples_needed(const pocsag_mod_t *mod, size_t nbits)
 {
 	if (!mod || mod->baud_rate == 0)
 		return 0;
-	/* ceil(nbits * sample_rate / baud_rate) */
+	/* ceil(nbits * sample_rate / baud_rate) + lead-in silence */
+	size_t leadin = (size_t)((uint64_t)mod->sample_rate * POCSAG_LEADIN_MS / 1000);
 	return (size_t)(((uint64_t)nbits * mod->sample_rate
-	                 + mod->baud_rate - 1) / mod->baud_rate);
+	                 + mod->baud_rate - 1) / mod->baud_rate) + leadin;
 }
 
 pocsag_err_t pocsag_modulate(pocsag_mod_t *mod,
@@ -75,6 +76,7 @@ pocsag_err_t pocsag_modulate(pocsag_mod_t *mod,
 	if (mod->mark_freq <= 0.0f || mod->space_freq <= 0.0f)
 		return POCSAG_ERR_PARAM;
 
+	size_t leadin = (size_t)((uint64_t)mod->sample_rate * POCSAG_LEADIN_MS / 1000);
 	size_t needed = pocsag_mod_samples_needed(mod, nbits);
 	if (needed > out_cap)
 		return POCSAG_ERR_OVERFLOW;
@@ -87,13 +89,17 @@ pocsag_err_t pocsag_modulate(pocsag_mod_t *mod,
 	double phase = mod->phase;
 	size_t si = 0;
 
+	/* silence lead-in for receiver squelch */
+	for (size_t j = 0; j < leadin; j++)
+		out[si++] = 0.0f;
+
 	for (size_t bi = 0; bi < nbits; bi++) {
 		int bit = (bits[bi / 8] >> (7 - (bi & 7))) & 1;
 		double omega = bit ? omega_mark : omega_space;
 
 		/* bit boundary computed in floating-point to handle
 		 * non-integer samples-per-bit correctly */
-		size_t next = (size_t)((double)(bi + 1) * spb + 0.5);
+		size_t next = (size_t)((double)(bi + 1) * spb + 0.5) + leadin;
 		if (next > needed)
 			next = needed;
 
@@ -138,18 +144,24 @@ pocsag_err_t pocsag_baseband_ex(const uint8_t *bits, size_t nbits,
 	if (sample_rate / baud_rate < 5)
 		return POCSAG_ERR_PARAM;
 
+	size_t leadin = (size_t)((uint64_t)sample_rate * POCSAG_LEADIN_MS / 1000);
 	double spb = (double)sample_rate / (double)baud_rate;
 	size_t needed = (size_t)(((uint64_t)nbits * sample_rate
-	                          + baud_rate - 1) / baud_rate);
+	                          + baud_rate - 1) / baud_rate) + leadin;
 	if (needed > out_cap)
 		return POCSAG_ERR_OVERFLOW;
 
 	size_t si = 0;
+
+	/* silence lead-in for receiver squelch */
+	for (size_t j = 0; j < leadin; j++)
+		out[si++] = 0.0f;
+
 	for (size_t bi = 0; bi < nbits; bi++) {
 		int bit = (bits[bi / 8] >> (7 - (bi & 7))) & 1;
 		float level = bit ? -0.73f : 0.73f;
 
-		size_t next = (size_t)((double)(bi + 1) * spb + 0.5);
+		size_t next = (size_t)((double)(bi + 1) * spb + 0.5) + leadin;
 		if (next > needed)
 			next = needed;
 

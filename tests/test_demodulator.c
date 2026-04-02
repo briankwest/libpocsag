@@ -102,10 +102,10 @@ static void test_demod_roundtrip_bits(void)
 	pocsag_mod_t mod;
 	pocsag_mod_init(&mod, 48000, 1200);
 
-	float audio[1500];
+	static float audio[26000];
 	size_t alen = 0;
 	ASSERT(pocsag_modulate(&mod, pattern, nbits,
-	                       audio, 1500, &alen) == POCSAG_OK);
+	                       audio, 26000, &alen) == POCSAG_OK);
 
 	bit_buf_t bb;
 	memset(&bb, 0, sizeof(bb));
@@ -114,10 +114,13 @@ static void test_demod_roundtrip_bits(void)
 	pocsag_demod_init(&dem, 48000, 1200, collect_bit, &bb);
 	ASSERT(pocsag_demodulate(&dem, audio, alen) == POCSAG_OK);
 
-	ASSERT(bb.count == nbits);
+	/* Lead-in silence produces extra bits — check that the LAST
+	 * nbits match the original pattern (leadin bits are noise). */
+	ASSERT(bb.count >= nbits);
+	size_t off = bb.count - nbits;
 	for (size_t i = 0; i < nbits; i++) {
 		int expected = (pattern[i / 8] >> (7 - (i & 7))) & 1;
-		ASSERT_EQ_INT(bb.bits[i], expected);
+		ASSERT_EQ_INT(bb.bits[off + i], expected);
 	}
 }
 
@@ -152,12 +155,12 @@ static void test_demod_roundtrip_message(void)
 
 	size_t  need = pocsag_mod_samples_needed(&mod, bs_bits);
 	/* use static buffer — max ~45k samples for a single message */
-	static float audio[65536];
+	static float audio[131072];
 	size_t  alen = 0;
 
-	ASSERT(need <= 65536);
+	ASSERT(need <= 131072);
 	ASSERT(pocsag_modulate(&mod, bitstream, bs_bits,
-	                       audio, 65536, &alen) == POCSAG_OK);
+	                       audio, 131072, &alen) == POCSAG_OK);
 
 	/* demodulate → collect bits */
 	bit_buf_t bb;
@@ -196,11 +199,11 @@ static void test_demod_roundtrip_alpha(void)
 	pocsag_mod_t mod;
 	pocsag_mod_init(&mod, 48000, 1200);
 
-	static float audio[65536];
+	static float audio[131072];
 	size_t  alen = 0;
 
 	ASSERT(pocsag_modulate(&mod, bitstream, bs_bits,
-	                       audio, 65536, &alen) == POCSAG_OK);
+	                       audio, 131072, &alen) == POCSAG_OK);
 
 	bit_buf_t bb;
 	memset(&bb, 0, sizeof(bb));
@@ -363,10 +366,10 @@ static void test_demod_baseband_roundtrip(void)
 	                            &bs_len, &bs_bits) == POCSAG_OK);
 
 	/* generate baseband NRZ */
-	static float audio[65536];
+	static float audio[131072];
 	size_t alen = 0;
 	ASSERT(pocsag_baseband(bitstream, bs_bits, 48000, 1200,
-	                       audio, 65536, &alen) == POCSAG_OK);
+	                       audio, 131072, &alen) == POCSAG_OK);
 
 	/* demodulate baseband → collect bits */
 	bit_buf_t bb;
@@ -402,10 +405,10 @@ static void test_demod_baseband_alpha(void)
 	                            bitstream, sizeof(bitstream),
 	                            &bs_len, &bs_bits) == POCSAG_OK);
 
-	static float audio[65536];
+	static float audio[131072];
 	size_t alen = 0;
 	ASSERT(pocsag_baseband(bitstream, bs_bits, 48000, 1200,
-	                       audio, 65536, &alen) == POCSAG_OK);
+	                       audio, 131072, &alen) == POCSAG_OK);
 
 	bit_buf_t bb;
 	memset(&bb, 0, sizeof(bb));

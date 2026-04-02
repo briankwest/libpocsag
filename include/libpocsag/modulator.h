@@ -26,6 +26,9 @@ extern "C" {
 #define POCSAG_SRATE_32000  32000
 #define POCSAG_SRATE_48000  48000
 
+/* Silence prepended to modulator output for receiver squelch lead-in */
+#define POCSAG_LEADIN_MS  500
+
 /* Standard POCSAG baud rates */
 #define POCSAG_BAUD_512   512
 #define POCSAG_BAUD_1200  1200
