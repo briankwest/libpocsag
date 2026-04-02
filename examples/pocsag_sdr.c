@@ -271,6 +271,7 @@ int main(int argc, char **argv)
 
 	/* squelch state */
 	int sq_open = 0, sq_open_cnt = 0, sq_close_cnt = 0;
+	int32_t rms_baseline = 0;
 
 	while (g_running) {
 		/* pull IQ from ring */
@@ -333,24 +334,38 @@ int main(int argc, char **argv)
 		}
 		int32_t rms = (int32_t)sqrtf((float)(rms_sum / audio_pos));
 
+		/* Adaptive squelch: works on both quiet channels and
+		 * persistent-carrier repeaters. */
 		if (!sq_open) {
-			if (rms < sq_open_th) {
+			if (rms_baseline == 0)
+				rms_baseline = rms;
+			else
+				rms_baseline = rms_baseline + (rms - rms_baseline) / 16;
+
+			int dip = (rms_baseline > 1000 && rms < rms_baseline / 2);
+			int abs_open = (rms < sq_open_th);
+			if (dip || abs_open) {
 				sq_open_cnt++;
 				if (sq_open_cnt >= SQ_DEBOUNCE_OPEN) {
 					sq_open = 1; sq_close_cnt = 0;
 					if (verbose)
-						fprintf(stderr, "[squelch] OPEN  rms=%d\n", rms);
+						fprintf(stderr, "[squelch] OPEN  rms=%d baseline=%d\n",
+						        rms, rms_baseline);
 					pocsag_decoder_reset(&rx.decoder);
 					pocsag_demod_reset(&rx.demod);
 				}
 			} else { sq_open_cnt = 0; }
 		} else {
-			if (rms > sq_close_th) {
+			int recovered = (rms_baseline > 1000 &&
+			                 rms > rms_baseline * 3 / 4);
+			int abs_close = (rms > sq_close_th);
+			if (recovered || abs_close) {
 				sq_close_cnt++;
 				if (sq_close_cnt >= SQ_DEBOUNCE_CLOSE) {
 					sq_open = 0; sq_open_cnt = 0;
 					if (verbose)
-						fprintf(stderr, "[squelch] CLOSE rms=%d\n", rms);
+						fprintf(stderr, "[squelch] CLOSE rms=%d baseline=%d\n",
+						        rms, rms_baseline);
 					pocsag_decoder_flush(&rx.decoder);
 				}
 			} else { sq_close_cnt = 0; }
