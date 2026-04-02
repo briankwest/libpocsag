@@ -37,8 +37,8 @@
 /* squelch defaults (FM-inverted: low RMS = signal) */
 #define DEFAULT_SQ_OPEN    15000
 #define DEFAULT_SQ_CLOSE   17000
-#define SQ_DEBOUNCE_OPEN   3
-#define SQ_DEBOUNCE_CLOSE  5
+#define SQ_DEBOUNCE_OPEN   5
+#define SQ_DEBOUNCE_CLOSE  8
 
 /* ── ring buffer for async IQ reader ── */
 
@@ -342,7 +342,7 @@ int main(int argc, char **argv)
 			else
 				rms_baseline = rms_baseline + (rms - rms_baseline) / 16;
 
-			int dip = (rms_baseline > 1000 && rms < rms_baseline / 2);
+			int dip = (rms_baseline > 1000 && rms < rms_baseline * 2 / 5);
 			int abs_open = (rms < sq_open_th);
 			if (dip || abs_open) {
 				sq_open_cnt++;
@@ -357,7 +357,7 @@ int main(int argc, char **argv)
 			} else { sq_open_cnt = 0; }
 		} else {
 			int recovered = (rms_baseline > 1000 &&
-			                 rms > rms_baseline * 3 / 4);
+			                 rms > rms_baseline * 3 / 5);
 			int abs_close = (rms > sq_close_th);
 			if (recovered || abs_close) {
 				sq_close_cnt++;
