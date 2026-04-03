@@ -184,3 +184,82 @@ pocsag_err_t pocsag_demod_baseband(pocsag_demod_t *d,
 
 	return POCSAG_OK;
 }
+
+/* ================================================================
+ * Multi-phase FSK receiver
+ * ================================================================ */
+
+static void rx_on_bit(int bit, void *user)
+{
+	struct pocsag_rx_phase_ctx *ctx = (struct pocsag_rx_phase_ctx *)user;
+	uint8_t b = (uint8_t)(bit & 1);
+	pocsag_decoder_feed_bits(&ctx->rx->decoder[ctx->phase], &b, 1);
+}
+
+void pocsag_rx_init(pocsag_rx_t *rx, uint32_t sample_rate,
+                    uint32_t baud_rate,
+                    pocsag_msg_cb_t cb, void *user)
+{
+	memset(rx, 0, sizeof(*rx));
+	rx->active = -1;
+	double phase_max = (double)sample_rate / (double)baud_rate;
+	for (int p = 0; p < POCSAG_RX_NPHASE; p++) {
+		rx->ctx[p].rx    = rx;
+		rx->ctx[p].phase = p;
+		pocsag_demod_init(&rx->demod[p], sample_rate, baud_rate,
+		                  rx_on_bit, &rx->ctx[p]);
+		/* offset each demod's bit clock evenly */
+		rx->demod[p].bit_phase = (double)p / (double)POCSAG_RX_NPHASE;
+		/* advance sample_idx to match so correlators stay coherent */
+		rx->demod[p].sample_idx = (uint32_t)((double)p * phase_max
+		                           / (double)POCSAG_RX_NPHASE);
+		pocsag_decoder_init(&rx->decoder[p], cb, user);
+	}
+}
+
+void pocsag_rx_reset(pocsag_rx_t *rx)
+{
+	uint32_t sr = rx->demod[0].sample_rate;
+	uint32_t br = rx->demod[0].baud_rate;
+	pocsag_msg_cb_t cb = rx->decoder[0].callback;
+	void *user = rx->decoder[0].user;
+	pocsag_rx_init(rx, sr, br, cb, user);
+}
+
+void pocsag_rx_flush(pocsag_rx_t *rx)
+{
+	for (int p = 0; p < POCSAG_RX_NPHASE; p++)
+		pocsag_decoder_flush(&rx->decoder[p]);
+	rx->active = -1;
+}
+
+pocsag_err_t pocsag_rx_feed(pocsag_rx_t *rx,
+                            const float *samples, size_t nsamples)
+{
+	if (!rx || !samples)
+		return POCSAG_ERR_PARAM;
+
+	for (int p = 0; p < POCSAG_RX_NPHASE; p++) {
+		if (rx->active >= 0 && p != rx->active)
+			continue;
+
+		pocsag_dec_state_t prev = rx->decoder[p].state;
+		pocsag_demodulate(&rx->demod[p], samples, nsamples);
+
+		/* lock to first phase that finds sync */
+		if (rx->active < 0 &&
+		    rx->decoder[p].state != POCSAG_DEC_HUNTING)
+			rx->active = p;
+
+		/* batch done — clear correlators, unlock for next frame */
+		if (prev != POCSAG_DEC_HUNTING &&
+		    rx->decoder[p].state == POCSAG_DEC_HUNTING) {
+			rx->demod[p].mark_i = rx->demod[p].mark_q = 0.0;
+			rx->demod[p].space_i = rx->demod[p].space_q = 0.0;
+			rx->demod[p].sample_idx = 0;
+			if (p == rx->active)
+				rx->active = -1;
+		}
+	}
+	return POCSAG_OK;
+}

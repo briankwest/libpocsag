@@ -55,7 +55,9 @@ static void sighandler(int sig)
 {
 	(void)sig;
 	g_running = 0;
-	rtlsdr_cancel_async(g_dev);
+	if (g_dev)
+		rtlsdr_cancel_async(g_dev);
+	pthread_cond_signal(&g_ring_cond);
 }
 
 static void rtlsdr_cb(unsigned char *buf, uint32_t len, void *ctx)
@@ -94,21 +96,13 @@ static void on_message(const pocsag_msg_t *msg, void *user)
 	fflush(stdout);
 }
 
-/* ── demod → decoder bridge ── */
+/* ── rx state ── */
 
 typedef struct {
-	pocsag_decoder_t decoder;
-	pocsag_demod_t   demod;
+	pocsag_rx_t      rx;
 	int              verbose;
 	uint32_t         last_report;
 } rx_state_t;
-
-static void on_bit(int bit, void *user)
-{
-	rx_state_t *rx = (rx_state_t *)user;
-	uint8_t b = (uint8_t)(bit & 1);
-	pocsag_decoder_feed_bits(&rx->decoder, &b, 1);
-}
 
 /* ── WAV helpers ── */
 
@@ -209,12 +203,11 @@ int main(int argc, char **argv)
 
 	uint32_t freq_hz = (uint32_t)(freq_mhz * 1e6 + 0.5);
 
-	/* set up decoder chain */
+	/* multi-phase receiver */
 	rx_state_t rx;
 	memset(&rx, 0, sizeof(rx));
 	rx.verbose = verbose;
-	pocsag_decoder_init(&rx.decoder, on_message, NULL);
-	pocsag_demod_init(&rx.demod, audio_rate, baud, on_bit, &rx);
+	pocsag_rx_init(&rx.rx, audio_rate, baud, on_message, NULL);
 
 	/* open SDR */
 	int count = (int)rtlsdr_get_device_count();
@@ -244,8 +237,11 @@ int main(int argc, char **argv)
 	fprintf(stderr, "Squelch: open=%d close=%d\n", sq_open_th, sq_close_th);
 	fprintf(stderr, "Listening... (Ctrl-C to stop)\n\n");
 
-	signal(SIGINT, sighandler);
-	signal(SIGTERM, sighandler);
+	struct sigaction sa = { .sa_handler = sighandler };
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGINT,  &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGHUP,  &sa, NULL);
 
 	FILE *wav_fp = wav_path ? wav_open(wav_path, audio_rate) : NULL;
 	uint32_t wav_samples = 0;
@@ -351,8 +347,7 @@ int main(int argc, char **argv)
 					if (verbose)
 						fprintf(stderr, "[squelch] OPEN  rms=%d baseline=%d\n",
 						        rms, rms_baseline);
-					pocsag_decoder_reset(&rx.decoder);
-					pocsag_demod_reset(&rx.demod);
+					pocsag_rx_reset(&rx.rx);
 				}
 			} else { sq_open_cnt = 0; }
 		} else {
@@ -366,44 +361,47 @@ int main(int argc, char **argv)
 					if (verbose)
 						fprintf(stderr, "[squelch] CLOSE rms=%d baseline=%d\n",
 						        rms, rms_baseline);
-					pocsag_decoder_flush(&rx.decoder);
+					pocsag_rx_flush(&rx.rx);
 				}
 			} else { sq_close_cnt = 0; }
 		}
 
-		/* feed demod when squelch open */
-		if (sq_open) {
-			pocsag_dec_state_t prev = rx.decoder.state;
-			if (use_fsk)
-				pocsag_demodulate(&rx.demod, audio_buf, (size_t)audio_pos);
-			else
-				pocsag_demod_baseband(&rx.demod, audio_buf, (size_t)audio_pos);
-
-			if (prev == POCSAG_DEC_BATCH && rx.decoder.state == POCSAG_DEC_HUNTING)
-				pocsag_demod_reset(&rx.demod);
-		}
+		/* feed receiver when squelch open */
+		if (sq_open)
+			pocsag_rx_feed(&rx.rx, audio_buf, (size_t)audio_pos);
 
 		/* stats */
-		if (verbose && rx.demod.stat_bits > 0 &&
-		    rx.demod.stat_bits - rx.last_report >= 5000) {
-			fprintf(stderr, "[stats] bits=%u trans=%u msgs=%u bch_ok=%u bch_err=%u rms=%d sq=%s\n",
-			        rx.demod.stat_bits, rx.demod.stat_transitions,
-			        rx.decoder.stat_messages, rx.decoder.stat_corrected,
-			        rx.decoder.stat_errors, rms, sq_open ? "OPEN" : "closed");
-			rx.last_report = rx.demod.stat_bits;
+		if (verbose) {
+			uint32_t tb = 0, sm = 0, sc = 0, se = 0;
+			for (int p = 0; p < POCSAG_RX_NPHASE; p++) {
+				tb += rx.rx.demod[p].stat_bits;
+				sm += rx.rx.decoder[p].stat_messages;
+				sc += rx.rx.decoder[p].stat_corrected;
+				se += rx.rx.decoder[p].stat_errors;
+			}
+			if (tb > 0 && tb - rx.last_report >= 5000) {
+				fprintf(stderr, "[stats] bits=%u msgs=%u bch_ok=%u bch_err=%u rms=%d sq=%s\n",
+				        tb, sm, sc, se, rms, sq_open ? "OPEN" : "closed");
+				rx.last_report = tb;
+			}
 		}
 	}
 
 	rtlsdr_cancel_async(g_dev);
 	pthread_join(reader, NULL);
-	pocsag_decoder_flush(&rx.decoder);
+	pocsag_rx_flush(&rx.rx);
 
 	wav_close(wav_fp, wav_samples);
 	if (wav_path) fprintf(stderr, "Wrote %u samples to %s\n", wav_samples, wav_path);
 
-	fprintf(stderr, "\nStopped. bits=%u transitions=%u messages=%u\n",
-	        rx.demod.stat_bits, rx.demod.stat_transitions,
-	        rx.decoder.stat_messages);
+	{
+		uint32_t tb = 0, m = 0;
+		for (int p = 0; p < POCSAG_RX_NPHASE; p++) {
+			tb += rx.rx.demod[p].stat_bits;
+			m  += rx.rx.decoder[p].stat_messages;
+		}
+		fprintf(stderr, "\nStopped. bits=%u messages=%u\n", tb, m);
+	}
 
 	rtlsdr_close(g_dev);
 	return 0;

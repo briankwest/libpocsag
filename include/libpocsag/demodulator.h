@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "error.h"
+#include "decoder.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -90,6 +91,47 @@ pocsag_err_t pocsag_demodulate(pocsag_demod_t *demod,
 pocsag_err_t pocsag_demod_baseband(pocsag_demod_t *demod,
                                    const float *samples,
                                    size_t nsamples);
+
+/* ---- Multi-phase FSK receiver ----
+ *
+ * Runs POCSAG_RX_NPHASE demod+decoder pairs at evenly-spaced
+ * bit-clock offsets.  Whichever decoder finds sync first is used
+ * for the remainder of that batch.  Proven approach for reliable
+ * decode when the symbol clock phase is unknown (SDR / audio).
+ *
+ *   pocsag_rx_t rx;
+ *   pocsag_rx_init(&rx, 48000, 1200, my_msg_cb, ctx);
+ *   // audio loop:
+ *   pocsag_rx_feed(&rx, audio, n);
+ *   // squelch close:
+ *   pocsag_rx_flush(&rx);
+ *   // squelch open:
+ *   pocsag_rx_reset(&rx);
+ */
+
+#define POCSAG_RX_NPHASE 5
+
+typedef struct pocsag_rx pocsag_rx_t;  /* forward — defined in .c */
+
+struct pocsag_rx_phase_ctx {
+	pocsag_rx_t *rx;
+	int          phase;
+};
+
+struct pocsag_rx {
+	pocsag_demod_t   demod[POCSAG_RX_NPHASE];
+	pocsag_decoder_t decoder[POCSAG_RX_NPHASE];
+	struct pocsag_rx_phase_ctx ctx[POCSAG_RX_NPHASE];
+	int              active;   /* locked phase, or -1 */
+};
+
+void         pocsag_rx_init(pocsag_rx_t *rx, uint32_t sample_rate,
+                            uint32_t baud_rate,
+                            pocsag_msg_cb_t cb, void *user);
+void         pocsag_rx_reset(pocsag_rx_t *rx);
+void         pocsag_rx_flush(pocsag_rx_t *rx);
+pocsag_err_t pocsag_rx_feed(pocsag_rx_t *rx,
+                            const float *samples, size_t nsamples);
 
 #ifdef __cplusplus
 }
