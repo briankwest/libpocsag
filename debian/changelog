@@ -7,7 +7,7 @@ libpocsag (1.0.2-1) stable; urgency=low
   * 500ms silence lead-in for receiver squelch
   * 65 tests, valgrind clean, zero allocation
 
- -- Brian <brian@example.com>  Wed, 02 Apr 2026 00:00:00 +0000
+ -- Brian <brian@mcalester.net>  Wed, 02 Apr 2026 00:00:00 +0000
 
 libpocsag (1.1.0-1) stable; urgency=low
 
@@ -19,10 +19,10 @@ libpocsag (1.1.0-1) stable; urgency=low
   * Frequency validation and per-instance thread safety documented
   * 63 tests, valgrind clean, zero allocation
 
- -- Brian <brian@example.com>  Mon, 30 Mar 2026 00:00:00 +0000
+ -- Brian <brian@mcalester.net>  Mon, 30 Mar 2026 00:00:00 +0000
 
 libpocsag (1.0.0-1) stable; urgency=low
 
   * Initial release.
 
- -- Brian <brian@example.com>  Mon, 30 Mar 2026 00:00:00 +0000
+ -- Brian <brian@mcalester.net>  Mon, 30 Mar 2026 00:00:00 +0000
