@@ -1,4 +1,4 @@
-noinst_PROGRAMS = encode_page decode_stream modem_demo gen_wav gen_baseband pocsag_sdr
+noinst_PROGRAMS = encode_page decode_stream modem_demo gen_wav gen_baseband
 
 encode_page_SOURCES = encode_page.c
 encode_page_CFLAGS = \
@@ -35,9 +35,13 @@ gen_baseband_CFLAGS = \
 	-I$(top_srcdir)/include
 gen_baseband_LDADD = $(top_builddir)/src/libpocsag.la
 
+if HAVE_RTLSDR
+noinst_PROGRAMS += pocsag_sdr
 pocsag_sdr_SOURCES = pocsag_sdr.c
 pocsag_sdr_CFLAGS = \
 	-std=c99 \
 	-Wall -Wextra -pedantic \
-	-I$(top_srcdir)/include
-pocsag_sdr_LDADD = $(top_builddir)/src/libpocsag.la -lrtlsdr -lm -lpthread
+	-I$(top_srcdir)/include \
+	$(RTLSDR_CFLAGS)
+pocsag_sdr_LDADD = $(top_builddir)/src/libpocsag.la $(RTLSDR_LIBS) -lm -lpthread
+endif
