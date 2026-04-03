@@ -1,3 +1,14 @@
+libpocsag (1.0.2-1) stable; urgency=low
+
+  * FSK modulator and demodulator with voice-band tones
+  * Baseband NRZ output for FM transmitter / multimon-ng
+  * RTL-SDR receiver (pocsag_sdr) with async IQ reader
+  * Adaptive squelch for persistent-carrier repeaters
+  * 500ms silence lead-in for receiver squelch
+  * 65 tests, valgrind clean, zero allocation
+
+ -- Brian <brian@example.com>  Wed, 02 Apr 2026 00:00:00 +0000
+
 libpocsag (1.1.0-1) stable; urgency=low
 
   * Add FSK modulator and demodulator for full audio pipeline
