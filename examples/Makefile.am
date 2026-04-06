@@ -35,6 +35,7 @@ gen_baseband_CFLAGS = \
 	-I$(top_srcdir)/include
 gen_baseband_LDADD = $(top_builddir)/src/libpocsag.la
 
+if HAVE_PORTAUDIO
 noinst_PROGRAMS += pocsag_tx
 pocsag_tx_SOURCES = pocsag_tx.c
 pocsag_tx_CFLAGS = \
@@ -42,6 +43,7 @@ pocsag_tx_CFLAGS = \
 	-Wall -Wextra -pedantic \
 	-I$(top_srcdir)/include
 pocsag_tx_LDADD = $(top_builddir)/src/libpocsag.la -lportaudio -lm
+endif
 
 if HAVE_RTLSDR
 noinst_PROGRAMS += pocsag_sdr
