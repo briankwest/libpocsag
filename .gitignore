@@ -26,12 +26,17 @@ Makefile
 Makefile.in
 */Makefile
 */Makefile.in
+configure~
 
 libpocsag.pc
 
 test_libpocsag
 encode_page
 decode_stream
+examples/gen_baseband
+examples/gen_wav
+examples/modem_demo
+examples/pocsag_sdr
 
 *.tar.gz
 *.tar.xz
